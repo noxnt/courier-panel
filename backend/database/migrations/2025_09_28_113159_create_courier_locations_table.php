@@ -13,12 +13,11 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('couriers', function (Blueprint $table) {
+        Schema::create('courier_locations', function (Blueprint $table) {
             $table->id();
-            $table->string('name', 100);
-            $table->string('phone', 20)->unique();
-            $table->softDeletes();
-            $table->timestamps();
+            $table->foreignId('courier_id')->constrained();
+            $table->geography('location', subtype: 'point');
+            $table->timestamp('created_at');
         });
     }
 
@@ -27,6 +26,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('couriers');
+        Schema::dropIfExists('courier_locations');
     }
 };

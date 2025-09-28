@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Courier extends Model
@@ -16,6 +17,10 @@ class Courier extends Model
     protected $fillable = [
         'name',
         'phone',
-        'coordinates',
     ];
+
+    public function lastLocation(): HasOne
+    {
+        return $this->hasOne(CourierLocation::class)->latest();
+    }
 }

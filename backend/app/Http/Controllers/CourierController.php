@@ -19,7 +19,7 @@ class CourierController extends Controller
     {
         return ApiResponse::success(
             'Couriers list retrieved successfully.',
-            CourierResource::collection(Courier::all())
+            CourierResource::collection(Courier::with('lastLocation')->get())
         );
     }
 
@@ -27,7 +27,7 @@ class CourierController extends Controller
     {
         return ApiResponse::success(
             'Courier retrieved successfully.',
-            CourierResource::make($courier),
+            CourierResource::make($courier->load('lastLocation')),
         );
     }
 

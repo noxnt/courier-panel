@@ -20,7 +20,13 @@ class CourierResource extends JsonResource
             'id' => $this->id,
             'name' => $this->name,
             'phone' => $this->phone,
-            'coordinates' => $this->coordinates, // TODO conversion from WKB is required
+            'location' => $this->whenLoaded('lastLocation', function () {
+                // Fetch DB-stored coordinates for initial map rendering
+                return [
+                    'lng' => $this->lastLocation->location->getX(), // longitude ↔️
+                    'lat' => $this->lastLocation->location->getY(), // latitude ↕️
+                ];
+            }),
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];
