@@ -26,10 +26,6 @@ class UpdateCourierLocationRequest extends FormRequest
                 'numeric',
                 'between:-180,180',
             ],
-            'created_at' => [
-                'nullable',
-                'date',
-            ],
         ];
     }
 

@@ -11,7 +11,8 @@ Route::apiResource('couriers', CourierController::class);
 
 // Courier location
 Route::post('courier-locations', [CourierLocationController::class, 'store'])
-    ->middleware('throttle:120,1');
+    ->middleware('throttle:120,1')
+    ->name('courier-locations.store');
 
 // Admin panel
 Route::group(['prefix' => 'admin'], function () {
