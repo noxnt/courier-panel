@@ -19,7 +19,7 @@ class EmulateCourierPush extends Command
     /**
      * The name and signature of the console command.
      */
-    protected $signature = 'courier:emulate-push {--batch=50} {--max-delta=0.0008} {--timeout=10}';
+    protected $signature = 'courier:emulate-push {--batch=50} {--max-delta=0.001} {--timeout=10}';
 
     /**
      * The console command description.
@@ -64,7 +64,10 @@ class EmulateCourierPush extends Command
                 $courierLocation = self::CENTER_COORDINATES;
             }
 
-            $newCoordinates = $this->calculateNewCoordinates($courierLocation); // ['lat' => int, 'lng' => int]
+            $newCoordinates = [
+                'lat' => $courierLocation['lat'] + $this->randomDelta(),
+                'lng' => $courierLocation['lng'] + $this->randomDelta(),
+            ];
 
             $payload = [
                 'courier_id' => $courierId,
@@ -123,27 +126,6 @@ class EmulateCourierPush extends Command
             $this->errors += count($batch);
             $this->error('Batch HTTP error: ' . $e->getMessage());
         }
-    }
-
-    private function calculateNewCoordinates(array $coordinates): array
-    {
-        // Small random delta in range [-maxDelta, +maxDelta]
-        $newLat = $coordinates['lat'] + $this->randomDelta();
-        $newLng = $coordinates['lng'] + $this->randomDelta();
-
-        // Ensure that the new coordinates ($newLat, $newLng) stay within a defined square boundary
-        // around the center point (CENTER_COORDINATES). This prevents the courier from "moving"
-        // outside the allowed area by clamping the latitude and longitude between calculated
-        // lower and upper bounds. Latitude and longitude are adjusted independently.
-        $lowerBoundLat = self::CENTER_COORDINATES['lat'] - self::RADIUS_DEG; // lower bound: minimum allowed latitude
-        $upperBoundLat = self::CENTER_COORDINATES['lat'] + self::RADIUS_DEG; // upper bound: maximum allowed latitude
-        $lowerBoundLng = self::CENTER_COORDINATES['lng'] - self::RADIUS_DEG; // lower bound: minimum allowed longitude
-        $upperBoundLng = self::CENTER_COORDINATES['lng'] + self::RADIUS_DEG; // upper bound: maximum allowed longitude
-
-        return [
-            'lat' => max($lowerBoundLat, min($upperBoundLat, $newLat)),
-            'lng' => max($lowerBoundLng, min($upperBoundLng, $newLng)),
-        ];
     }
 
     /**
