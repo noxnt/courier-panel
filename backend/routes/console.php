@@ -5,7 +5,6 @@ declare(strict_types=1);
 use App\Console\Commands\CourierLocationSync;
 use App\Console\Commands\EmulateCourierPush;
 use App\Enums\SettingEnum;
-use App\Models\Setting;
 use Illuminate\Support\Facades\Schedule;
 
 // General
@@ -19,4 +18,4 @@ Schedule::command(CourierLocationSync::class)->cron("*/$minutes * * * *");
 Schedule::command(EmulateCourierPush::class)
     ->everyFiveSeconds()
     ->environments(['local', 'development'])
-    ->when(Setting::getBool(SettingEnum::EMULATOR_ENABLE->value));
+    ->when(setting(SettingEnum::EMULATOR_ENABLE));

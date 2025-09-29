@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y \
     libonig-dev \
     libxml2-dev \
     curl \
+    supervisor \
     && docker-php-ext-install pdo pdo_pgsql zip mbstring bcmath soap pcntl \
     && pecl install redis \
     && docker-php-ext-enable redis \
@@ -27,4 +28,7 @@ RUN useradd -u 1000 -ms /bin/bash -g www www
 USER www
 
 EXPOSE 9000
-CMD ["php-fpm"]
+
+COPY ./supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+CMD ["supervisord", "-n", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

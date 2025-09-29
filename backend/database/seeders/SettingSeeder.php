@@ -8,15 +8,19 @@ use App\Enums\SettingEnum;
 use App\Models\Setting;
 use Illuminate\Database\Seeder;
 
-class SettingSeed extends Seeder
+class SettingSeeder extends Seeder
 {
     public function run(): void
     {
-        Setting::insert([
+        $settings = collect([
             [
                 'key' => SettingEnum::EMULATOR_ENABLE->value,
                 'value' => 0
             ],
         ]);
+
+        $existingKeys = Setting::all()->pluck('key')->toArray();
+
+        Setting::insert($settings->whereNotIn('key', $existingKeys)->toArray());
     }
 }
