@@ -15,7 +15,7 @@ return new class extends Migration
     {
         Schema::create('courier_locations', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('courier_id')->constrained();
+            $table->foreignId('courier_id')->constrained()->cascadeOnDelete();
             $table->geography('location', subtype: 'point');
             $table->timestamp('created_at');
         });

@@ -4,17 +4,18 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\CourierLocation;
 
+use App\Rules\StrictInteger;
 use Illuminate\Foundation\Http\FormRequest;
 
-class UpdateCourierLocationRequest extends FormRequest
+class StoreCourierLocationRequest extends FormRequest
 {
     public function rules(): array
     {
         return [
             'courier_id' => [
                 'required',
-                'int',
                 'exists:couriers,id',
+                new StrictInteger(),
             ],
             'lat' => [
                 'required',

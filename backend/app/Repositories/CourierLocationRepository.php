@@ -15,7 +15,7 @@ class CourierLocationRepository
         $data = $data->map(function ($point) {
                 return [
                     'courier_id' => $point['courier_id'],
-                    'location' => Point::make($point['lat'], $point['lng']),
+                    'location' => Point::make($point['lng'], $point['lat']),
                     'created_at' => $point['created_at'],
                 ];
             })
