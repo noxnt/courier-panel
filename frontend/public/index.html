@@ -9,6 +9,11 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
+    <!-- MarkerCluster -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"/>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"/>
+    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+
     <!-- Pusher -->
     <script src="https://js.pusher.com/8.2/pusher.min.js"></script>
 
@@ -21,6 +26,7 @@
         .card{background:white;border:1px solid #e6eef8;padding:12px;border-radius:6px;box-shadow:0 1px 2px rgba(0,0,0,0.03);margin-bottom:16px}
         table{width:100%;border-collapse:collapse}
         th,td{padding:8px;border-bottom:1px solid #f0f4f8;text-align:left}
+        tr.active{background:#e0f2fe}
         button{background:var(--accent);color:white;border:none;padding:6px 12px;border-radius:6px;cursor:pointer}
         button.small{padding:4px 8px;font-size:12px}
         .muted{color:#6b7280}
@@ -33,6 +39,10 @@
         .emulator-label{font-weight:600;font-size:15px}
         .emulator-hint{font-size:13px;color:#6b7280;margin-left:4px}
         #ws-received{height:160px;overflow:auto;border:1px solid #eef2ff;padding:8px;background:#f8fbff}
+        .courier-label{display:flex;flex-direction:column;align-items:center;}
+        .courier-emoji{font-size:20px;}
+        .courier-name{background:rgba(0,0,0,0.6);color:white;padding:2px 6px;border-radius:4px;margin-top:2px;font-size:11px;white-space:nowrap}
+        .courier-active .courier-name{background:#f59e0b}
     </style>
 </head>
 <body>
@@ -50,6 +60,14 @@
                 <button id="btn-refresh">Refresh</button>
                 <button id="btn-add">Add courier</button>
             </div>
+        </div>
+        <div id="add-form-container" style="display:none;margin-top:8px;">
+            <form id="add-form" style="margin-left: auto;">
+                <label>Name: <input type="text" id="add-name" required/></label>
+                <label>Phone: <input type="text" id="add-phone" required/></label>
+                <button type="submit">Add</button>
+                <button type="button" id="add-cancel">Cancel</button>
+            </form>
         </div>
         <table id="couriers-table" style="margin-top:12px">
             <thead><tr><th>ID</th><th>Name</th><th>Phone</th><th>Last position</th><th>Actions</th></tr></thead>
@@ -110,8 +128,8 @@
     const filterSelect = document.getElementById('filter-select');
     const manualCourierSelect = document.getElementById('manual-courier');
     let couriersCache = [];
-    let positions = {};
-    let map, markers = {};
+    let positions = {}; // {id: {lat,lng,history:[]}}
+    let map, markers = {}, polylines = {}, clusterGroup;
 
     async function api(path, opts = {}){
         const url = API_BASE + path;
@@ -127,7 +145,6 @@
             const data = await api('/couriers');
             couriersCache = data.data;
             renderCouriers(); populateFilter(); populateManualSelect();
-            // initial map markers
             couriersCache.forEach(c=>{
                 if(c.location) updateMarker(c.id, parseFloat(c.location.lat), parseFloat(c.location.lng));
             });
@@ -140,16 +157,18 @@
             const pos = positions[c.id] ? `${positions[c.id].lat.toFixed(5)}, ${positions[c.id].lng.toFixed(5)}` :
                 (c.location ? `${c.location.lat.toFixed(5)}, ${c.location.lng.toFixed(5)}` : '<span class="muted">none</span>');
             tableBody.insertAdjacentHTML('beforeend', `
-      <tr data-id="${c.id}">
-        <td>${c.id}</td>
-        <td class="td-name">${escapeHtml(c.name||'—')}</td>
-        <td class="td-phone">${escapeHtml(c.phone||'—')}</td>
-        <td>${pos}</td>
-        <td class="td-actions">
-          <button class="btn-edit small">Edit</button>
-          <button class="btn-delete small">Delete</button>
-        </td>
-      </tr>`);
+        <tr data-id="${c.id}">
+          <td>${c.id}</td>
+          <td class="td-name">${escapeHtml(c.name||'—')}</td>
+          <td class="td-phone">${escapeHtml(c.phone||'—')}</td>
+          <td>${pos}</td>
+          <td class="td-actions">
+            <button class="btn-edit small">Edit</button>
+            <button class="btn-update small" style="display:none">Update</button>
+            <button class="btn-cancel small" style="display:none">Cancel</button>
+            <button class="btn-delete small">Delete</button>
+          </td>
+        </tr>`);
         });
     }
 
@@ -160,37 +179,71 @@
         manualCourierSelect.innerHTML = couriersCache.map(c=>`<option value="${c.id}">${escapeHtml(c.name||c.id)}</option>`).join('');
     }
 
-    // Inline editing
+    // Inline editing with form inputs
     tableBody.addEventListener('click', async (e)=>{
         const row = e.target.closest('tr'); if(!row) return;
         const id = row.dataset.id;
         if(e.target.classList.contains('btn-edit')){
             const nameCell = row.querySelector('.td-name');
             const phoneCell = row.querySelector('.td-phone');
-            const actionsCell = row.querySelector('.td-actions');
-            const oldName = nameCell.textContent.trim();
-            const oldPhone = phoneCell.textContent.trim();
-            nameCell.innerHTML = `<input type="text" value="${escapeHtml(oldName)}"/>`;
-            phoneCell.innerHTML = `<input type="text" value="${escapeHtml(oldPhone)}"/>`;
-            actionsCell.innerHTML = `
-        <button class="btn-update small">Update</button>
-        <button class="btn-cancel small">Cancel</button>`;
+            nameCell.innerHTML = `<input type="text" value="${escapeHtml(nameCell.textContent)}"/>`;
+            phoneCell.innerHTML = `<input type="text" value="${escapeHtml(phoneCell.textContent)}"/>`;
+            row.querySelector('.btn-edit').style.display='none';
+            row.querySelector('.btn-delete').style.display='none';
+            row.querySelector('.btn-update').style.display='inline-block';
+            row.querySelector('.btn-cancel').style.display='inline-block';
         }
         if(e.target.classList.contains('btn-cancel')){
-            loadCouriers();
+            renderCouriers();
         }
         if(e.target.classList.contains('btn-update')){
-            const newName = row.querySelector('.td-name input').value;
-            const newPhone = row.querySelector('.td-phone input').value;
+            const name = row.querySelector('.td-name input').value;
+            const phone = row.querySelector('.td-phone input').value;
             try{
-                await api('/couriers/'+id, {method:'PUT', body: JSON.stringify({name:newName,phone:newPhone})});
-                loadCouriers();
+                await api(`/couriers/${id}`, {method:'PUT', body: JSON.stringify({name, phone})});
+                await loadCouriers();
             }catch(err){ alert('Update failed: '+err.message); }
         }
+    });
+
+    // Refresh
+    document.getElementById('btn-refresh').addEventListener('click', loadCouriers);
+
+    // Add courier toggle
+    const addFormContainer = document.getElementById('add-form-container');
+    document.getElementById('btn-add').addEventListener('click', ()=>{
+        addFormContainer.style.display = addFormContainer.style.display==='none' ? 'flex' : 'none';
+    });
+
+    // Cancel add
+    document.getElementById('add-cancel').addEventListener('click', ()=>{
+        addFormContainer.style.display='none';
+        document.getElementById('add-form').reset();
+    });
+
+    // Submit add
+    document.getElementById('add-form').addEventListener('submit', async e=>{
+        e.preventDefault();
+        const name = document.getElementById('add-name').value;
+        const phone = document.getElementById('add-phone').value;
+        try{
+            await api('/couriers', {method:'POST', body: JSON.stringify({name, phone})});
+            addFormContainer.style.display='none';
+            document.getElementById('add-form').reset();
+            await loadCouriers();
+        }catch(err){ alert('Add failed: '+err.message); }
+    });
+
+    // Delete courier
+    tableBody.addEventListener('click', async e=>{
+        const row = e.target.closest('tr'); if(!row) return;
+        const id = row.dataset.id;
         if(e.target.classList.contains('btn-delete')){
             if(!confirm('Delete courier?')) return;
-            try{ await api('/couriers/'+id, {method:'DELETE'}); loadCouriers(); }
-            catch(err){ alert('Delete failed: '+err.message); }
+            try{
+                await api(`/couriers/${id}`, {method:'DELETE'});
+                await loadCouriers();
+            }catch(err){ alert('Delete failed: '+err.message); }
         }
     });
 
@@ -199,19 +252,48 @@
         if(map) return;
         map = L.map('map').setView([45.5017,-73.5673], 13);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
+        clusterGroup = L.markerClusterGroup();
+        map.addLayer(clusterGroup);
     }
+
+    function courierIcon(courier, active=false){
+        return L.divIcon({
+            className: active ? 'courier-active' : '',
+            html: `<div class="courier-label"><div class="courier-emoji">🛵</div><div class="courier-name">${escapeHtml(courier.name||'')} (#${courier.id})</div></div>`,
+            iconSize:[40,40],
+            iconAnchor:[20,40]
+        });
+    }
+
     function updateMarker(courierId, lat, lng){
         if(!map) initMap();
-        const id = String(courierId);
-        positions[courierId] = {lat, lng, timestamp: Date.now()};
-        if(markers[id]) markers[id].setLatLng([lat,lng]);
-        else{
-            const c = couriersCache.find(x=>String(x.id)===id);
-            const title = c ? `${c.name} (${c.id})` : `#${id}`;
-            markers[id] = L.marker([lat,lng]).addTo(map).bindPopup(title);
+        const id = courierId;
+        const courier = couriersCache.find(x=>x.id===id) || {id, name:''};
+
+        if(!positions[id]) positions[id] = {history:[]};
+        positions[id].lat = lat; positions[id].lng = lng;
+
+        const MAX_HISTORY = 4; // count of last steps
+        positions[id].history.push([lat,lng]);
+        if (positions[id].history.length > MAX_HISTORY) {
+            positions[id].history = positions[id].history.slice(-MAX_HISTORY);
         }
-        renderCouriers();
+
+        if(markers[id]){
+            markers[id].setLatLng([lat,lng]);
+        } else {
+            markers[id] = L.marker([lat,lng], {icon:courierIcon(courier)});
+            clusterGroup.addLayer(markers[id]);
+        }
+
+        // polyline history
+        if(polylines[id]){
+            polylines[id].setLatLngs(positions[id].history);
+        } else {
+            polylines[id] = L.polyline(positions[id].history, {color:'#2563eb'}).addTo(map);
+        }
     }
+
     document.getElementById('btn-center').addEventListener('click', ()=>{
         const val = filterSelect.value;
         if(!val){ if(map && Object.values(markers).length) map.fitBounds(Object.values(markers).map(m=>m.getLatLng())); return; }
@@ -225,14 +307,14 @@
         channel.bind('location-updated', function(data){
             appendReceived(JSON.stringify(data));
             if(data.courier_id && data.lat && data.lng){
-                updateMarker(data.courier_id, parseFloat(data.lat), parseFloat(data.lng));
+                updateMarker(parseInt(data.courier_id), parseFloat(data.lat), parseFloat(data.lng));
             }
         });
     }
     function appendReceived(text){
         const box = document.getElementById('ws-received');
         box.insertAdjacentHTML('beforeend', `<div>[${new Date().toLocaleTimeString()}] ${text}</div>`);
-        box.scrollTop = box.scrollHeight; // auto-scroll to bottom
+        box.scrollTop = box.scrollHeight;
     }
 
     // Emulator toggle
@@ -252,7 +334,7 @@
     // Manual coords form
     document.getElementById('manual-form').addEventListener('submit', async (e)=>{
         e.preventDefault();
-        const courier_id = manualCourierSelect.value;
+        const courier_id = parseInt(manualCourierSelect.value);
         const lat = parseFloat(document.getElementById('manual-lat').value);
         const lng = parseFloat(document.getElementById('manual-lng').value);
         if(isNaN(lat)||lat<-90||lat>90) return alert('Lat out of range');
