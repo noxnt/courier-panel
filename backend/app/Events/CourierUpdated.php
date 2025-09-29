@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Events;
 
 use Illuminate\Broadcasting\Channel;
-use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 
 /**
@@ -26,6 +25,16 @@ class CourierUpdated implements ShouldBroadcast
 
     public function broadcastOn(): Channel|array
     {
-        return new PrivateChannel('couriers');
+        return new Channel('couriers');
+    }
+
+    public function broadcastWith(): Channel|array
+    {
+        return $this->courierLocation;
+    }
+
+    public function broadcastAs(): string
+    {
+        return 'location-updated';
     }
 }

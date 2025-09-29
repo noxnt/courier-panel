@@ -21,7 +21,7 @@ class UpdateCourierRequest extends FormRequest
                 'sometimes',
                 'string',
                 'max:16',
-                'unique:couriers,phone,'.$this->user?->id,
+                'unique:couriers,phone,'.$this->courier?->id,
                 'regex:/^\+[1-9]\d{1,14}$/', // E.164: +1234567890
             ],
         ];
