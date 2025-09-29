@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Console\Commands;
 
 use App\Models\Courier;
-use App\Repository\CourierLocationRedisRepository;
+use App\Repositories\CourierLocationRedisRepository;
 use Illuminate\Console\Command;
 use Illuminate\Http\Client\Pool;
 use Illuminate\Support\Facades\Http;
@@ -35,7 +35,7 @@ class EmulateCourierPush extends Command
     private string $endpoint;
 
     public function __construct(
-        private readonly CourierLocationRedisRepository $CourierLocationRedisRepository,
+        private readonly CourierLocationRedisRepository $courierLocationRedisRepository,
     ) {
         parent::__construct();
     }
@@ -49,16 +49,15 @@ class EmulateCourierPush extends Command
         $this->maxDelta = (float) $this->option('max-delta'); // degrees ~111km per deg lat, small value. 0.0008 = ~90m
         $this->timeout = (int) $this->option('timeout');
         $this->endpoint = 'http://courier_nginx' . route('courier-locations.store', false, false);
-        dump($this->endpoint);
 
         $this->info("Emulator starting. Batch size: {$this->batchSize}. Max delta: {$this->maxDelta}");
 
-        $batch = [];
+        $courierIds = Courier::select('id')->get()->pluck('id');
 
-        // Stream couriers to avoid memory spikes
-        foreach (Courier::cursor() as $courier) {
+        $batch = [];
+        foreach ($courierIds as $courierId) {
             // Get coordinates from cache
-            $courierLocation = $this->CourierLocationRedisRepository->getLast($courier->id);
+            $courierLocation = $this->courierLocationRedisRepository->getLast($courierId);
 
             if (! $courierLocation) {
                 // For new couriers
@@ -68,7 +67,7 @@ class EmulateCourierPush extends Command
             $newCoordinates = $this->calculateNewCoordinates($courierLocation); // ['lat' => int, 'lng' => int]
 
             $payload = [
-                'courier_id' => $courier->id,
+                'courier_id' => $courierId,
                 ...$newCoordinates,
             ];
 

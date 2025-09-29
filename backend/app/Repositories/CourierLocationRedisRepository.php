@@ -2,15 +2,13 @@
 
 declare(strict_types=1);
 
-namespace App\Repository;
+namespace App\Repositories;
 
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Redis;
 
 class CourierLocationRedisRepository
 {
-    private const TTL_SECONDS = 600; // 10 minutes
-    private const MAX_POINTS = 100; // Maximum number of location points to keep per courier in Redis
     private const KEY_PREFIX = 'courier:locations:'; // Key prefix for specific courier
 
     /**
@@ -29,8 +27,8 @@ class CourierLocationRedisRepository
 
         Redis::rpush($key, $point);
 
-        Redis::expire($key, self::TTL_SECONDS);
-        Redis::ltrim($key, -self::MAX_POINTS, -1);
+        Redis::expire($key, config('courier.cache_ttl_minutes') * 60);
+        Redis::ltrim($key, -config('courier.max_cache_points'), -1);
     }
 
     /**
@@ -44,12 +42,19 @@ class CourierLocationRedisRepository
     }
 
     /**
-     * Get all points for specific courier
-     * Returns an array of CourierLocation[]
+     * Pull all cached points for a specific courier except the last one.
+     * Returns an array of points and removes them from Redis, keeping only the latest point.
      */
-    public function getAll(int $courierId): Collection
+    public function pullAllExceptLast(int $courierId): Collection
     {
-        $points = collect(Redis::lrange(self::KEY_PREFIX . $courierId, 0, -1));
+        $key = self::KEY_PREFIX . $courierId;
+
+        $points = collect(Redis::transaction(function ($pipe) use ($key) {
+            $points =$pipe->lrange($key, 0, -2); // fetch all except the last one
+            $pipe->ltrim($key, -1, -1); // keep in cache only the last one
+
+            return $points;
+        })[0]);
 
         return $points->map(fn($point) => json_decode($point, true));
     }

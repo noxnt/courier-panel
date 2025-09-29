@@ -6,7 +6,7 @@ namespace App\Listeners;
 
 use App\Events\CourierMoved;
 use App\Events\CourierUpdated;
-use App\Repository\CourierLocationRedisRepository;
+use App\Repositories\CourierLocationRedisRepository;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Cache;

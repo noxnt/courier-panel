@@ -8,18 +8,24 @@ use App\Http\Requests\Courier\StoreCourierRequest;
 use App\Http\Requests\Courier\UpdateCourierRequest;
 use App\Http\Resources\CourierResource;
 use App\Models\Courier;
+use App\Services\CourierService;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Symfony\Component\HttpFoundation\Response;
 
-// TODO move business logic to Service layer, DB queries to Repository layer
 class CourierController extends Controller
 {
+    public function __construct(
+        private readonly CourierService $courierService,
+    ) {
+        //
+    }
+
     public function index(): JsonResponse
     {
         return ApiResponse::success(
             'Couriers list retrieved successfully.',
-            CourierResource::collection(Courier::with('lastLocation')->get())
+            CourierResource::collection($this->courierService->getAll())
         );
     }
 
@@ -27,13 +33,13 @@ class CourierController extends Controller
     {
         return ApiResponse::success(
             'Courier retrieved successfully.',
-            CourierResource::make($courier->load('lastLocation')),
+            CourierResource::make($this->courierService->get($courier)),
         );
     }
 
     public function store(StoreCourierRequest $request): JsonResponse
     {
-        $courier = Courier::create($request->validated());
+        $courier = $this->courierService->create($request->validated());
 
         return ApiResponse::success(
             'Courier created successfully.',
@@ -44,7 +50,7 @@ class CourierController extends Controller
 
     public function update(Courier $courier, UpdateCourierRequest $request): JsonResponse
     {
-        $courier->update($request->validated());
+        $courier = $this->courierService->update($courier, $request->validated());
 
         return ApiResponse::success(
             'Courier updated successfully.',
@@ -54,7 +60,7 @@ class CourierController extends Controller
 
     public function destroy(Courier $courier): JsonResponse
     {
-        $courier->delete();
+        $this->courierService->delete($courier);
 
         return ApiResponse::success(
             'Courier deleted successfully.',
