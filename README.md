@@ -101,4 +101,4 @@ docker compose exec php php artisan route:clear
 
 ---
 ## Postman Collection
-[Download](https://drive.google.com/file/d/13etCceBt8yiemdWxpQZhzrhYr1oFLhWv/view?usp=sharing)
+[Download](https://drive.google.com/file/d/1RvyfPcwwYafsWnXHAGuet-4_cKgZnWCB/view?usp=sharing)
