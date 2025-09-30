@@ -242,6 +242,17 @@
             if(!confirm('Delete courier?')) return;
             try{
                 await api(`/couriers/${id}`, {method:'DELETE'});
+
+                if(markers[id]){
+                    clusterGroup.removeLayer(markers[id]);
+                    delete markers[id];
+                }
+                if(polylines[id]){
+                    map.removeLayer(polylines[id]);
+                    delete polylines[id];
+                }
+                delete positions[id];
+
                 await loadCouriers();
             }catch(err){ alert('Delete failed: '+err.message); }
         }
