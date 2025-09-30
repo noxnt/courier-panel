@@ -14,7 +14,6 @@ use Throwable;
 class EmulateCourierPush extends Command
 {
     private const CENTER_COORDINATES = ['lat' => 45.5017, 'lng' => -73.5673]; // Center of Montreal
-    private const RADIUS_DEG = 0.05; // ~5km - Radius around the center that serves as the boundary for movement points
 
     /**
      * The name and signature of the console command.
