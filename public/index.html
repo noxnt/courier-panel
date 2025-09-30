@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <title>Admin panel — Couriers</title>
+
+    <!-- Leaflet -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- MarkerCluster -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"/>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"/>
+    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+
+    <!-- Pusher -->
+    <script src="https://js.pusher.com/8.2/pusher.min.js"></script>
+
+    <style>
+        :root{--accent:#2563eb}
+        body{font-family:Inter,system-ui,Arial;margin:0;padding:0;color:#111}
+        header{background:#f8fafc;padding:12px 16px;border-bottom:1px solid #e6eef8;display:flex;gap:12px;align-items:center}
+        header h1{font-size:16px;margin:0}
+        main{padding:16px}
+        .card{background:white;border:1px solid #e6eef8;padding:12px;border-radius:6px;box-shadow:0 1px 2px rgba(0,0,0,0.03);margin-bottom:16px}
+        table{width:100%;border-collapse:collapse}
+        th,td{padding:8px;border-bottom:1px solid #f0f4f8;text-align:left}
+        tr.active{background:#e0f2fe}
+        button{background:var(--accent);color:white;border:none;padding:6px 12px;border-radius:6px;cursor:pointer}
+        button.small{padding:4px 8px;font-size:12px}
+        .muted{color:#6b7280}
+        #map{height:60vh}
+        input,select{padding:6px;border:1px solid #d1d5db;border-radius:4px}
+        label{font-weight:500}
+        textarea{width:100%;height:120px}
+        form{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+        .emulator-box{padding:12px;background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;margin-bottom:12px}
+        .emulator-label{font-weight:600;font-size:15px}
+        .emulator-hint{font-size:13px;color:#6b7280;margin-left:4px}
+        #ws-received{height:160px;overflow:auto;border:1px solid #eef2ff;padding:8px;background:#f8fbff}
+        .courier-label{display:flex;flex-direction:column;align-items:center;}
+        .courier-emoji{font-size:20px;}
+        .courier-name{background:rgba(0,0,0,0.6);color:white;padding:2px 6px;border-radius:4px;margin-top:2px;font-size:11px;white-space:nowrap}
+        .courier-active .courier-name{background:#f59e0b}
+    </style>
+</head>
+<body>
+<header>
+    <h1>Couriers Panel</h1>
+    <div style="margin-left:auto" class="muted">Frontend: Plain JS · Leaflet · Pusher</div>
+</header>
+
+<main>
+    <!-- courier list -->
+    <section class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+            <h2>Couriers</h2>
+            <div>
+                <button id="btn-refresh">Refresh</button>
+                <button id="btn-add">Add courier</button>
+            </div>
+        </div>
+        <div id="add-form-container" style="display:none;margin-top:8px;">
+            <form id="add-form" style="margin-left: auto;">
+                <label>Name: <input type="text" id="add-name" required/></label>
+                <label>Phone: <input type="text" id="add-phone" required/></label>
+                <button type="submit">Add</button>
+                <button type="button" id="add-cancel">Cancel</button>
+            </form>
+        </div>
+        <table id="couriers-table" style="margin-top:12px">
+            <thead><tr><th>ID</th><th>Name</th><th>Phone</th><th>Last position</th><th>Actions</th></tr></thead>
+            <tbody></tbody>
+        </table>
+    </section>
+
+    <!-- map + ws messages side by side -->
+    <section style="display:grid;grid-template-columns:2fr 1fr;gap:16px">
+        <div class="card">
+            <h2>Map — courier positions</h2>
+            <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+                <label class="muted">Filter by courier:</label>
+                <select id="filter-select"><option value="">All</option></select>
+                <button id="btn-center">Center on selected</button>
+            </div>
+            <div id="map"></div>
+        </div>
+
+        <div class="card">
+            <h2>Debug — Pusher events</h2>
+
+            <div class="emulator-box">
+                <label class="emulator-label">
+                    <input type="checkbox" id="emulator-toggle"/> Emulator enabled
+                    <span class="emulator-hint">(may take a few seconds)</span>
+                </label>
+            </div>
+
+            <div class="card" style="margin-bottom:12px">
+                <h3>Send coordinates manually</h3>
+                <form id="manual-form">
+                    <label>Courier:
+                        <select id="manual-courier" required></select>
+                    </label>
+                    <label>Lat:
+                        <input type="number" step="any" id="manual-lat" required min="-90" max="90"/>
+                    </label>
+                    <label>Lng:
+                        <input type="number" step="any" id="manual-lng" required min="-180" max="180"/>
+                    </label>
+                    <button type="submit" style="align-self:flex-start;width:auto">Send</button>
+                </form>
+            </div>
+
+            <p class="muted">Received messages:</p>
+            <div id="ws-received"></div>
+        </div>
+    </section>
+</main>
+
+<script>
+    const API_BASE = window.API_BASE || (location.origin + '/api');
+    const PUSHER_APP_KEY = "4b00022e7d8ca6c5f83e";
+    const PUSHER_CLUSTER = "eu";
+
+    const tableBody = document.querySelector('#couriers-table tbody');
+    const filterSelect = document.getElementById('filter-select');
+    const manualCourierSelect = document.getElementById('manual-courier');
+    let couriersCache = [];
+    let positions = {}; // {id: {lat,lng,history:[]}}
+    let map, markers = {}, polylines = {}, clusterGroup;
+
+    async function api(path, opts = {}){
+        const url = API_BASE + path;
+        const res = await fetch(url, {headers:{'Content-Type':'application/json'}, ...opts});
+        if(!res.ok) throw new Error('HTTP ' + res.status + ': ' + await res.text());
+        return res.status === 204 ? null : res.json();
+    }
+
+    function escapeHtml(s){return String(s||"").replace(/[&"'<>]/g,c=>({"&":"&amp;","\"":"&quot;","'":"&#39;","<":"&lt;",">":"&gt;"}[c]));}
+
+    async function loadCouriers(){
+        try{
+            const data = await api('/couriers');
+            couriersCache = data.data;
+            renderCouriers(); populateFilter(); populateManualSelect();
+            couriersCache.forEach(c=>{
+                if(c.location) updateMarker(c.id, parseFloat(c.location.lat), parseFloat(c.location.lng));
+            });
+        }catch(err){ alert('Failed to load couriers: '+err.message); }
+    }
+
+    function renderCouriers(){
+        tableBody.innerHTML = '';
+        couriersCache.forEach(c=>{
+            const pos = positions[c.id] ? `${positions[c.id].lat.toFixed(5)}, ${positions[c.id].lng.toFixed(5)}` :
+                (c.location ? `${c.location.lat.toFixed(5)}, ${c.location.lng.toFixed(5)}` : '<span class="muted">none</span>');
+            tableBody.insertAdjacentHTML('beforeend', `
+        <tr data-id="${c.id}">
+          <td>${c.id}</td>
+          <td class="td-name">${escapeHtml(c.name||'—')}</td>
+          <td class="td-phone">${escapeHtml(c.phone||'—')}</td>
+          <td>${pos}</td>
+          <td class="td-actions">
+            <button class="btn-edit small">Edit</button>
+            <button class="btn-update small" style="display:none">Update</button>
+            <button class="btn-cancel small" style="display:none">Cancel</button>
+            <button class="btn-delete small">Delete</button>
+          </td>
+        </tr>`);
+        });
+    }
+
+    function populateFilter(){
+        filterSelect.innerHTML = '<option value="">All</option>' + couriersCache.map(c=>`<option value="${c.id}">${escapeHtml(c.name||c.id)}</option>`).join('');
+    }
+    function populateManualSelect(){
+        manualCourierSelect.innerHTML = couriersCache.map(c=>`<option value="${c.id}">${escapeHtml(c.name||c.id)}</option>`).join('');
+    }
+
+    // Inline editing with form inputs
+    tableBody.addEventListener('click', async (e)=>{
+        const row = e.target.closest('tr'); if(!row) return;
+        const id = row.dataset.id;
+        if(e.target.classList.contains('btn-edit')){
+            const nameCell = row.querySelector('.td-name');
+            const phoneCell = row.querySelector('.td-phone');
+            nameCell.innerHTML = `<input type="text" value="${escapeHtml(nameCell.textContent)}"/>`;
+            phoneCell.innerHTML = `<input type="text" value="${escapeHtml(phoneCell.textContent)}"/>`;
+            row.querySelector('.btn-edit').style.display='none';
+            row.querySelector('.btn-delete').style.display='none';
+            row.querySelector('.btn-update').style.display='inline-block';
+            row.querySelector('.btn-cancel').style.display='inline-block';
+        }
+        if(e.target.classList.contains('btn-cancel')){
+            renderCouriers();
+        }
+        if(e.target.classList.contains('btn-update')){
+            const name = row.querySelector('.td-name input').value;
+            const phone = row.querySelector('.td-phone input').value;
+            try{
+                await api(`/couriers/${id}`, {method:'PUT', body: JSON.stringify({name, phone})});
+                await loadCouriers();
+            }catch(err){ alert('Update failed: '+err.message); }
+        }
+    });
+
+    // Refresh
+    document.getElementById('btn-refresh').addEventListener('click', loadCouriers);
+
+    // Add courier toggle
+    const addFormContainer = document.getElementById('add-form-container');
+    document.getElementById('btn-add').addEventListener('click', ()=>{
+        addFormContainer.style.display = addFormContainer.style.display==='none' ? 'flex' : 'none';
+    });
+
+    // Cancel add
+    document.getElementById('add-cancel').addEventListener('click', ()=>{
+        addFormContainer.style.display='none';
+        document.getElementById('add-form').reset();
+    });
+
+    // Submit add
+    document.getElementById('add-form').addEventListener('submit', async e=>{
+        e.preventDefault();
+        const name = document.getElementById('add-name').value;
+        const phone = document.getElementById('add-phone').value;
+        try{
+            await api('/couriers', {method:'POST', body: JSON.stringify({name, phone})});
+            addFormContainer.style.display='none';
+            document.getElementById('add-form').reset();
+            await loadCouriers();
+        }catch(err){ alert('Add failed: '+err.message); }
+    });
+
+    // Delete courier
+    tableBody.addEventListener('click', async e=>{
+        const row = e.target.closest('tr'); if(!row) return;
+        const id = row.dataset.id;
+        if(e.target.classList.contains('btn-delete')){
+            if(!confirm('Delete courier?')) return;
+            try{
+                await api(`/couriers/${id}`, {method:'DELETE'});
+                await loadCouriers();
+            }catch(err){ alert('Delete failed: '+err.message); }
+        }
+    });
+
+    // MAP
+    function initMap(){
+        if(map) return;
+        map = L.map('map').setView([45.5017,-73.5673], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
+        clusterGroup = L.markerClusterGroup();
+        map.addLayer(clusterGroup);
+    }
+
+    function courierIcon(courier, active=false){
+        return L.divIcon({
+            className: active ? 'courier-active' : '',
+            html: `<div class="courier-label"><div class="courier-emoji">🛵</div><div class="courier-name">${escapeHtml(courier.name||'')} (#${courier.id})</div></div>`,
+            iconSize:[40,40],
+            iconAnchor:[20,40]
+        });
+    }
+
+    function updateMarker(courierId, lat, lng){
+        if(!map) initMap();
+        const id = courierId;
+        const courier = couriersCache.find(x=>x.id===id) || {id, name:''};
+
+        if(!positions[id]) positions[id] = {history:[]};
+        positions[id].lat = lat; positions[id].lng = lng;
+
+        const MAX_HISTORY = 4; // count of last steps
+        positions[id].history.push([lat,lng]);
+        if (positions[id].history.length > MAX_HISTORY) {
+            positions[id].history = positions[id].history.slice(-MAX_HISTORY);
+        }
+
+        if(markers[id]){
+            markers[id].setLatLng([lat,lng]);
+        } else {
+            markers[id] = L.marker([lat,lng], {icon:courierIcon(courier)});
+            clusterGroup.addLayer(markers[id]);
+        }
+
+        // polyline history
+        if(polylines[id]){
+            polylines[id].setLatLngs(positions[id].history);
+        } else {
+            polylines[id] = L.polyline(positions[id].history, {color:'#2563eb'}).addTo(map);
+        }
+    }
+
+    document.getElementById('btn-center').addEventListener('click', ()=>{
+        const val = filterSelect.value;
+        if(!val){ if(map && Object.values(markers).length) map.fitBounds(Object.values(markers).map(m=>m.getLatLng())); return; }
+        const m = markers[String(val)]; if(m) map.setView(m.getLatLng(), 30);
+    });
+
+    // PUSHER
+    function initPusher(){
+        const pusher = new Pusher(PUSHER_APP_KEY, { cluster: PUSHER_CLUSTER, forceTLS: true });
+        const channel = pusher.subscribe('couriers');
+        channel.bind('location-updated', function(data){
+            appendReceived(JSON.stringify(data));
+            if(data.courier_id && data.lat && data.lng){
+                updateMarker(parseInt(data.courier_id), parseFloat(data.lat), parseFloat(data.lng));
+            }
+        });
+    }
+    function appendReceived(text){
+        const box = document.getElementById('ws-received');
+        box.insertAdjacentHTML('beforeend', `<div>[${new Date().toLocaleTimeString()}] ${text}</div>`);
+        box.scrollTop = box.scrollHeight;
+    }
+
+    // Emulator toggle
+    async function loadSettings(){
+        try{
+            const res = await api('/settings');
+            const emulator = res.data.find(s=>s.key==='emulator_enabled');
+            document.getElementById('emulator-toggle').checked = (emulator && emulator.value==='1');
+        }catch(err){ console.error('Failed to load settings', err); }
+    }
+    document.getElementById('emulator-toggle').addEventListener('change', async (e)=>{
+        try{
+            await api('/settings', {method:'PATCH', body: JSON.stringify([{key:'emulator_enabled', value: e.target.checked?1:0}])});
+        }catch(err){ alert('Failed: '+err.message); }
+    });
+
+    // Manual coords form
+    document.getElementById('manual-form').addEventListener('submit', async (e)=>{
+        e.preventDefault();
+        const courier_id = parseInt(manualCourierSelect.value);
+        const lat = parseFloat(document.getElementById('manual-lat').value);
+        const lng = parseFloat(document.getElementById('manual-lng').value);
+        if(isNaN(lat)||lat<-90||lat>90) return alert('Lat out of range');
+        if(isNaN(lng)||lng<-180||lng>180) return alert('Lng out of range');
+        try{
+            await api('/courier-locations', {method:'POST', body: JSON.stringify({courier_id, lat, lng})});
+            alert('Coordinates sent!');
+        }catch(err){ alert('Send failed: '+err.message); }
+    });
+
+    window.addEventListener('load', ()=>{
+        loadCouriers();
+        loadSettings();
+        initMap();
+        initPusher();
+    });
+</script>
+</body>
+</html>

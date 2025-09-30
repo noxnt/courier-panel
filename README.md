@@ -49,14 +49,14 @@ Key features include:
 ### Steps
 1. Clone the repository
 ```bash
-clone https://github.com/noxnt/courier-panel.git
+git clone https://github.com/noxnt/courier-panel.git
 cd courier-panel
 ```
 2. Set up environment configuration
    
-  *Copy and adjust the provided .env file for your environment.*
+  *Copy or configure the provided .env file for your environment.*
 
-5. Build Docker containers
+3. Build Docker containers
 ```bash
 docker compose build
 ```
@@ -70,7 +70,7 @@ docker compose exec php ./dev-init.sh
 ```
   A helper script is provided to run all required setup commands. **Done!** 
   
-  After completion, open the application at: [http://localhost:8080/](http://localhost:8080/)
+  After completion, open the application at: [http://localhost:8080/admin-panel](http://localhost:8080/admin-panel)
   
 **OR perform the steps manually:**
   
@@ -96,7 +96,7 @@ docker compose exec php php artisan config:clear
 docker compose exec php php artisan cache:clear
 docker compose exec php php artisan route:clear
 ```
-  Open the application at: [http://localhost:8080/](http://localhost:8080/)
+  Open the application at: [http://localhost:8080/admin-panel](http://localhost:8080/admin-panel)
 
 
 ---
